@@ -41,7 +41,7 @@ func New(uri string) (*MagnetURI, error) {
 	m := &MagnetURI{params}
 
 	if !strings.HasPrefix(uri, magnetURIPrefix) {
-		return m, fmt.Errorf("the following valid Magnet uri schema prefix is not present: %s", magnetURIPrefix)
+		return m, fmt.Errorf("magnet uri schema prefix is not present: %q", magnetURIPrefix)
 	}
 
 	u, err := url.Parse(uri)
@@ -61,10 +61,38 @@ func New(uri string) (*MagnetURI, error) {
 	return &MagnetURI{params}, nil
 }
 
+//Parse does not extract a magneturi returns an error if parse fails
+func Parse(uri string) error {
+	if strings.HasPrefix(uri, magnetURIPrefix) {
+		rawParams := strings.TrimPrefix(uri, magnetURIPrefix)
+		params := strings.Split(rawParams, "&")
+		for _, param := range params {
+			KV := strings.SplitN(param, "=", 2)
+			if len(KV) != 2 {
+				return fmt.Errorf("Parameter without prefix: %q", param)
+			}
+			if !isValidPrefix(KV[0]) {
+				return fmt.Errorf("Invalid parameter prefix: %q", KV[0])
+			}
+			//TODO: BTIH check
+			//value := KV[1]
+		}
+		return nil
+	}
+	return fmt.Errorf("magnet uri schema prefix is not present: %q", magnetURIPrefix)
+}
+
+func isValidPrefix(prefix string) bool {
+	if _, ok := pType()[prefix]; ok {
+		return true
+	}
+	return false
+}
+
 func extractParams(prefix string, u *url.URL) ([]param, error) {
 	ps, ok := u.Query()[prefix]
 	if !ok {
-		fmt.Printf("info: Magnet URI does not include parameter: %s\n", prefix)
+		//fmt.Printf("info: Magnet URI does not include parameter: %s\n", prefix)
 		return nil, nil
 	}
 	params := make([]param, 0, len(ps))
