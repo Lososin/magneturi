@@ -61,6 +61,19 @@ func New(uri string) (*MagnetURI, error) {
 	return &MagnetURI{params}, nil
 }
 
+func extractParams(prefix string, u *url.URL) ([]param, error) {
+	ps, ok := u.Query()[prefix]
+	if !ok {
+		//fmt.Printf("info: Magnet URI does not include parameter: %s\n", prefix)
+		return nil, nil
+	}
+	params := make([]param, 0, len(ps))
+	for _, p := range ps {
+		params = append(params, param{prefix: prefix, value: p})
+	}
+	return params, nil
+}
+
 //Parse does not extract a magneturi returns an error if parse fails
 func Parse(uri string) error {
 	if strings.HasPrefix(uri, magnetURIPrefix) {
@@ -87,19 +100,6 @@ func isValidPrefix(prefix string) bool {
 		return true
 	}
 	return false
-}
-
-func extractParams(prefix string, u *url.URL) ([]param, error) {
-	ps, ok := u.Query()[prefix]
-	if !ok {
-		//fmt.Printf("info: Magnet URI does not include parameter: %s\n", prefix)
-		return nil, nil
-	}
-	params := make([]param, 0, len(ps))
-	for _, p := range ps {
-		params = append(params, param{prefix: prefix, value: p})
-	}
-	return params, nil
 }
 
 // Aseembles from struct - implements stringer
