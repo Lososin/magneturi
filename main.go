@@ -107,8 +107,8 @@ func (m *magnet) String() string {
 
 func (m *magnet) Info() {
 	w := tabwriter.NewWriter(os.Stdout, 0, 1, 1, ' ', tabwriter.TabIndent)
-	fmt.Fprintln(w, "#\tPrefix\tMeaning\tValue")
-	fmt.Fprintln(w, "=\t======\t=======\t=====")
+	fmt.Fprintln(w, "#\tPrefix\tDescription\tValue")
+	fmt.Fprintln(w, "=\t======\t===========\t=====")
 	for i, p := range m.params {
 		fmt.Fprintln(w, strconv.Itoa(i)+"\t"+p.prefix+"\t"+pType()[p.prefix]+"\t"+p.value)
 	}
