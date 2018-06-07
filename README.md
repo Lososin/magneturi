@@ -1,5 +1,5 @@
 # magneturi
-##This is a Magnet link/URI parser for Go.
+## This is a Magnet link/URI parser for Go.
 
 See main.go for sample usage.
 Look at the tests for the package magneturi for more info.
@@ -7,7 +7,7 @@ Look at the tests for the package magneturi for more info.
 **I am new to GOLANG.**  
 **Postive/constructive criticism will be gratefully received**
 
-##Acknowledgements  
+## Acknowledgements  
 this started as a fork of 
 https://github.com/elopio/magneturi
 
