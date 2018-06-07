@@ -15,14 +15,12 @@ TODO:
 * Improve tests (used VSCODE to autogenerate)
 * Improve code :)
 
-### Install:  
+### Install & Test:  
 ____________
 ```
 $ go get github.com/nmmh/magneturi/magneturi 
 $ cd %GO_PATH%/src/github.com/nmmh/magneturi/magneturi
 
-$ go build; go install
--or-
 $ go test
 ```
 
