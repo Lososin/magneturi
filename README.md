@@ -1,7 +1,7 @@
-# magneturi
+# MagnetURI
 ## This is a Magnet link/URI parser for Go.
 
-See main.go for sample usage.
+See main.go for sample usage.  
 Look at the tests for the package magneturi for more info.
 
 **I am new to GOLANG.**  
