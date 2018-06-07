@@ -2,7 +2,6 @@ package magneturi
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -10,10 +9,10 @@ import (
 )
 
 const (
-	magnetURIPrefix = "magnet:?"
+	magnetSchemaPrefix = "magnet:?"
 )
 
-var pType = func() map[string]string {
+var paramType = func() map[string]string {
 	return map[string]string{
 		"xt": "exactTopic",
 		"dn": "displayName",
@@ -23,105 +22,206 @@ var pType = func() map[string]string {
 		"xs": "exactSource",
 		"as": "acceptableSource",
 		"xl": "exactLength",
+		"x.": "experimental",
 	}
 }
 
-//MagnetURI this is the structure that will containg the parsed MagnetURI.
+//MagnetURI this is the type that will containg the parsed MagnetURI.
 type MagnetURI struct {
 	params []param
 }
+
+//param is a paramter that makes up the MagnetURI
 type param struct {
 	prefix string
+	index  string
 	value  string
 }
 
-//New - performs some light parsing (garbage is discarded) and extracts the valid data to a Magnet struct.
-func New(uri string) (*MagnetURI, error) {
-	params := make([]param, 0, 0)
-	m := &MagnetURI{params}
-
-	if !strings.HasPrefix(uri, magnetURIPrefix) {
-		return m, fmt.Errorf("magnet uri schema prefix is not present: %q", magnetURIPrefix)
-	}
-
-	u, err := url.Parse(uri)
-	if err != nil {
-		return m, err
-	}
-
-	for prefix := range pType() {
-		prefixParams, err := extractParams(prefix, u)
-		if err != nil {
-			return m, err
-		}
-		if prefixParams != nil {
-			params = append(params, prefixParams...)
-		}
-	}
-	return &MagnetURI{params}, nil
-}
-
-func extractParams(prefix string, u *url.URL) ([]param, error) {
-	ps, ok := u.Query()[prefix]
-	if !ok {
-		//fmt.Printf("info: Magnet URI does not include parameter: %s\n", prefix)
-		return nil, nil
-	}
-	params := make([]param, 0, len(ps))
-	for _, p := range ps {
-		params = append(params, param{prefix: prefix, value: p})
-	}
-	return params, nil
-}
-
-//Parse does not extract a magneturi returns an error if parse fails
-func Parse(uri string) error {
-	if strings.HasPrefix(uri, magnetURIPrefix) {
-		rawParams := strings.TrimPrefix(uri, magnetURIPrefix)
-		params := strings.Split(rawParams, "&")
+//Parse returns a magnet url or fails to parse.
+//softparse == true will continue on error extracting all VALID parameters
+func Parse(rawMagnetURI string, softParse bool) (*MagnetURI, error) {
+	m := &MagnetURI{}
+	if strings.HasPrefix(rawMagnetURI, magnetSchemaPrefix) {
+		magnetNoSchemaPrefix := strings.TrimPrefix(rawMagnetURI, magnetSchemaPrefix)
+		params := strings.Split(magnetNoSchemaPrefix, "&")
 		for _, param := range params {
-			KV := strings.SplitN(param, "=", 2)
-			if len(KV) != 2 {
-				return fmt.Errorf("Parameter without prefix: %q", param)
+			validParam, err := parseParam(param)
+			if err != nil {
+				if softParse {
+					//skip adding this invalid parameter
+					err = nil
+					continue
+				}
+				return m, err
 			}
-			if !isValidPrefix(KV[0]) {
-				return fmt.Errorf("Invalid parameter prefix: %q", KV[0])
+			//add valid parameter to the MagnetURI
+			if err := m.addParam(validParam); err != nil {
+				if softParse {
+					err = nil
+					continue
+				}
+				return m, err
 			}
-			//TODO: BTIH check
-			//value := KV[1]
 		}
-		return nil
+		return m, nil
 	}
-	return fmt.Errorf("magnet uri schema prefix is not present: %q", magnetURIPrefix)
+	return m, fmt.Errorf("uri doesn't start with the Magnet URI schema prefix %q", magnetSchemaPrefix)
 }
 
-func isValidPrefix(prefix string) bool {
-	if _, ok := pType()[prefix]; ok {
+func parseParam(parameter string) (param, error) {
+	paramSplit := strings.SplitN(parameter, "=", 2)
+	if len(paramSplit) != 2 || (len(paramSplit) == 2 && paramSplit[1] == "") {
+		return param{}, fmt.Errorf("parameter without prefix or prefix without parameter: %q", parameter)
+	}
+	prefix := paramSplit[0]
+	prefix, index, err := splitDotPrefix(prefix)
+	if err != nil {
+		return param{}, err
+	}
+	if !isValidPrefix(prefix) {
+		return param{}, fmt.Errorf("invalid parameter prefix: %q", prefix)
+	}
+	value := paramSplit[1]
+	return param{prefix, index, value}, nil
+}
+
+func splitDotPrefix(prefix string) (string, string, error) {
+	if strings.HasPrefix(prefix, "x.") {
+		exp := strings.TrimLeft(prefix, "x.")
+		if exp == "" {
+			return "", "", fmt.Errorf("experimental info missing: %q", prefix)
+		}
+		return "x.", exp, nil
+	} else if strings.Contains(prefix, ".") {
+		prefixSplit := strings.SplitN(prefix, ".", 2)
+		if len(prefixSplit) != 2 || (len(prefixSplit) == 2 && prefixSplit[1] == "") {
+			return "", "", fmt.Errorf("dot index missing: %q", prefix)
+		}
+		index := prefixSplit[1]
+		return prefixSplit[0], index, nil
+	}
+	return prefix, "", nil
+}
+
+//Filter extracts a new MagnetURI based on the supplied prefixes.
+// Filters that are based on ParamTypes that are not present will
+// return no results.
+func (m *MagnetURI) Filter(paramTypes ...string) (*MagnetURI, error) {
+	newM := &MagnetURI{}
+	for _, pt := range paramTypes {
+		filteredParams, _ := m.getParamsByPrefix(pt)
+		for _, param := range filteredParams {
+			if err := newM.addParam(param); err != nil {
+				return newM, err
+			}
+		}
+	}
+	return newM, nil
+}
+
+func compareParams(first []param, second []param) bool {
+	if len(first) == len(second) {
+		for _, param := range first {
+			if !containsParam(second, param) {
+				return false
+			}
+		}
 		return true
 	}
 	return false
 }
 
-// Aseembles from struct - implements stringer
+func containsParam(list []param, param param) bool {
+	for _, item := range list {
+		if param.prefix == item.prefix &&
+			param.index == item.index &&
+			param.value == item.value {
+			return true
+		}
+	}
+	return false
+}
+
+func isValidPrefix(prefix string) bool {
+	if _, ok := paramType()[prefix]; ok {
+		return true
+	}
+	return false
+}
+
+func (m *MagnetURI) addParam(validParam param) error {
+	if !isValidPrefix(validParam.prefix) {
+		return fmt.Errorf("invalid parameter prefix: %q", validParam.prefix)
+	}
+	m.params = append(m.params, validParam)
+	return nil
+}
+
+func (m *MagnetURI) getParamsByPrefix(prefix string) ([]param, error) {
+	var p []param
+	for _, param := range m.params {
+		if prefix == param.prefix {
+			p = append(p, param)
+		}
+	}
+	if len(p) == 0 {
+		return nil, fmt.Errorf("no parameters by getParamsByPrefix using prefix %q", prefix)
+	}
+	return p, nil
+}
+
+//HasPrefix returns false if the magneturi has not got a parameter
+// with the passed prefix.
+func (m *MagnetURI) HasPrefix(prefix string) bool {
+	for _, item := range m.params {
+		if prefix == item.prefix {
+			return true
+		}
+	}
+	return false
+}
+
+//HasPrefixes return false if it does not have a parameter with
+// one of the supplied prefixes
+func (m *MagnetURI) HasPrefixes(paramTypes ...string) bool {
+	for _, pt := range paramTypes {
+		if !m.HasPrefix(pt) {
+			return false
+		}
+	}
+	return true
+}
+
+//Equal returns true if a magneturl has the same parameters
+func (m *MagnetURI) Equal(x MagnetURI) bool {
+	return compareParams(m.params, x.params)
+}
+
+// Asembles from struct
 func (m *MagnetURI) String() string {
 	if len(m.params) == 0 {
 		return "the Magnet URI has no parameters"
 	}
 	var ret string
 	for _, p := range m.params {
-		ret += "&" + p.prefix + "=" + p.value
+		if p.index != "" {
+			ret += "&" + strings.TrimRight(p.prefix, ".") + "." + p.index + "=" + p.value
+		} else {
+			ret += "&" + p.prefix + "=" + p.value
+		}
 	}
-	s := fmt.Sprintf("%s%s", magnetURIPrefix, strings.TrimLeft(ret, "&"))
+	s := fmt.Sprintf("%s%s", magnetSchemaPrefix, strings.TrimLeft(ret, "&"))
 	return s
 }
 
-//Info pretty prints some info.
-func (m *MagnetURI) Info() {
-	w := tabwriter.NewWriter(os.Stdout, 0, 1, 1, ' ', tabwriter.TabIndent)
-	fmt.Fprintln(w, "#\tPrefix\tDescription\tValue")
-	fmt.Fprintln(w, "=\t======\t===========\t=====")
+//PrintVerbose pretty prints some info.
+func (m *MagnetURI) PrintVerbose() {
+	tw := tabwriter.NewWriter(os.Stdout, 0, 1, 1, ' ', tabwriter.TabIndent)
+	fmt.Fprintln(tw, "#\tPrefix\tIndex/Exp\tDescription\tValue")
+	fmt.Fprintln(tw, "=\t======\t=========\t===========\t=====")
 	for i, p := range m.params {
-		fmt.Fprintln(w, strconv.Itoa(i)+"\t"+p.prefix+"\t"+pType()[p.prefix]+"\t"+p.value)
+		fmt.Fprintln(tw, strconv.Itoa(i)+"\t"+p.prefix+"\t"+p.index+"\t"+paramType()[p.prefix]+"\t"+p.value)
 	}
-	w.Flush()
+	tw.Flush()
 }
