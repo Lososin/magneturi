@@ -26,7 +26,7 @@ $ go build; go install
 $ go test
 ```
 
-Import 
+### Import 
 ____________
 ```
 import "github.com/nmmh/magneturi/magneturi"
